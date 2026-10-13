@@ -7,6 +7,7 @@ import { INestApplication } from '@nestjs/common';
 import { Url } from './entities/url.entity';
 import { UrlsController } from './urls.controller';
 import { RedirectController } from './redirect.controller';
+import { UrlCacheService } from './url-cache.service';
 import { UrlsService } from './urls.service';
 
 function expectNoLeak(body: unknown): void {
@@ -41,6 +42,11 @@ describe('database failure responses (http, mocked repo)', () => {
         UrlsService,
         { provide: getRepositoryToken(Url), useValue: throwingRepo },
         { provide: ConfigService, useValue: { get: (_k: string, d?: unknown) => d } },
+        // Cache disabled here: the DB-failure behavior must not depend on Redis.
+        {
+          provide: UrlCacheService,
+          useValue: { getUrl: async () => null, setUrl: async () => undefined, delUrl: async () => undefined },
+        },
       ],
     }).compile();
     app = module.createNestApplication();

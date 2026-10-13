@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "url-shortener-baseline",
+    "description": "Phase 1 baseline: URL creation + redirect latency (n=30 each). Redirect requests must NOT follow 302 automatically. See docs/latency-baseline-report.md for steps.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "shortCode", "value": "REPLACE_AFTER_CREATE" }
+  ],
+  "item": [
+    {
+      "name": "0 - Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "1 - Create URL",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"originalUrl\": \"{{originalUrl}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/urls"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('create returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "pm.test('create returns shortCode', function () {",
+              "    pm.expect(pm.response.json().shortCode).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Redirect (known code, do NOT follow)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/{{shortCode}}",
+        "protocolProfileBehavior": {
+          "followRedirects": false,
+          "followOriginalHttpMethod": false
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('redirect returns 302', function () {",
+              "    pm.response.to.have.status(302);",
+              "});",
+              "pm.test('redirect has Location header', function () {",
+              "    pm.expect(pm.response.headers.get('Location')).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Redirect (unknown code, do NOT follow)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/doesnotexist",
+        "protocolProfileBehavior": {
+          "followRedirects": false,
+          "followOriginalHttpMethod": false
+        }
+      }
+    },
+    {
+      "name": "4 - Stats",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/urls/{{shortCode}}/stats"
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import { CreateUrlDto } from './dto/create-url.dto';
 import { UrlResponseDto } from './dto/url-response.dto';
 import { UrlStatsDto } from './dto/url-stats.dto';
 import { Url } from './entities/url.entity';
+import { UrlCacheService } from './url-cache.service';
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const CODE_LENGTH = 7;
@@ -41,6 +42,7 @@ export class UrlsService {
     @InjectRepository(Url)
     private readonly urls: Repository<Url>,
     private readonly config: ConfigService,
+    private readonly cache: UrlCacheService,
   ) {}
 
   async create(dto: CreateUrlDto): Promise<UrlResponseDto> {
@@ -79,11 +81,24 @@ export class UrlsService {
 
   /**
    * Atomically increment the click count and return the original URL.
-   * A single UPDATE ... RETURNING statement keeps the increment safe under
-   * concurrent requests (no read-modify-write lost updates). Unknown codes
-   * match zero rows, so nothing is incremented and a 404 is thrown.
+   * Cache flow: a Redis hit still awaits the same atomic PostgreSQL
+   * increment (clicks stay exact); a miss runs the increment and uses
+   * RETURNING to populate the cache. Unknown codes match zero rows, so
+   * nothing is incremented, nothing is cached, and a 404 is thrown.
+   * Redis failures fall back to the database-only path.
    */
   async resolve(code: string): Promise<string> {
+    const cached = await this.cache.getUrl(code);
+    if (cached !== null) {
+      const affected = await this.incrementClicks(code);
+      if (affected === 0) {
+        // Row is gone (no delete endpoint exists; only manual DB edits
+        // can cause this): drop the stale key, never serve it.
+        await this.cache.delUrl(code);
+        throw new NotFoundException('Short URL not found');
+      }
+      return cached;
+    }
     const result = await this.urls
       .createQueryBuilder()
       .update(Url)
@@ -96,7 +111,22 @@ export class UrlsService {
     if (!originalUrl) {
       throw new NotFoundException('Short URL not found');
     }
+    await this.cache.setUrl(code, originalUrl);
     return originalUrl;
+  }
+
+  /**
+   * Single atomic UPDATE without RETURNING, for the cache-hit path where
+   * the URL already came from Redis. Returns the number of rows matched.
+   */
+  private async incrementClicks(code: string): Promise<number> {
+    const result = await this.urls
+      .createQueryBuilder()
+      .update(Url)
+      .set({ clicks: () => '"clicks" + 1' })
+      .where('"shortCode" = :code', { code })
+      .execute();
+    return typeof result.affected === 'number' ? result.affected : 0;
   }
 
   async getStats(code: string): Promise<UrlStatsDto> {

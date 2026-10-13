@@ -44,6 +44,8 @@ Connection settings live in `.env` (see `.env.example` as the source of truth):
 | `DB_PASSWORD` | *(empty)*             | Postgres password, if required       |
 | `DB_NAME`     | `url_shortener`       | Database name                        |
 | `TYPEORM_SYNC`| `false`               | Must stay `false`; use migrations    |
+| `REDIS_URL`   | `redis://localhost:6379` | Redis for short-code cache (fail-open to PostgreSQL) |
+| `REDIS_TTL_SECONDS` | `3600`           | Cache TTL for `url:{code}` entries   |
 | `DB_SSL`      | `false`               | Set `true` for hosted TLS Postgres (Neon) |
 | `FRONTEND_URL`| *(empty)*             | Comma-separated CORS origin(s) for production frontend |
 

@@ -1,0 +1,5 @@
+localResources:
+  collections:
+    - ../docs/postman/url-shortener-baseline.postman_collection.json
+workspace:
+  id: ''
